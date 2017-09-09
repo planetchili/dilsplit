@@ -22,7 +22,7 @@ public:
 		for( const auto c : number )
 		{
 			assert( c >= '0' && c <= '9' );
-			Mul10( scratch );
+			MulPow10( 1,scratch );
 			*this += unsigned long long( c - '0' );
 		}
 	}
@@ -268,16 +268,16 @@ public:
 		return c;
 	}
 private:
-	void Mul10( Bignum& scratch = Bignum{} )
+	void MulPow10( int power,Bignum& scratch = Bignum{} )
 	{
-		
-		// calculate this number x 8
+		const auto& seq = shiftTable[power - 1];
+		*this <<= seq.front();
 		scratch = *this;
-		scratch <<= 3;
-		// multiply this number by 2
-		*this <<= 1;
-		// add previous this number x 8
-		*this += scratch;
+		for( auto i = seq.cbegin() + 1,e = seq.cend(); i != e; i++ )
+		{
+			scratch <<= *i;
+			*this += scratch;
+		}
 	}
 private:
 	std::vector<unsigned long long> bits;
