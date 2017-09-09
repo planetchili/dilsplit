@@ -14,7 +14,7 @@ public:
 	}
 	Bignum( const std::string& number )
 	{
-		const auto estimated_bits = number.size() / 3u;
+		const size_t estimated_bits = number.size() / 3u;
 		Bignum scratch;
 		scratch.bits.reserve( estimated_bits / 64 + 1 );
 		bits.reserve( estimated_bits / 64 + 1 );
@@ -268,8 +268,9 @@ public:
 		return c;
 	}
 private:
-	void Mul10( Bignum& scratch )
+	void Mul10( Bignum& scratch = Bignum{} )
 	{
+		
 		// calculate this number x 8
 		scratch = *this;
 		scratch <<= 3;
@@ -280,6 +281,29 @@ private:
 	}
 private:
 	std::vector<unsigned long long> bits;
+	static std::vector<std::vector<int>> shiftTable;
+};
+
+std::vector<std::vector<int>> Bignum::shiftTable = {
+	{ 1,2 },
+	{ 2,3,1 },
+	{ 3,2,1,1,1,1 },
+	{ 4,4,1,1,3 },
+	{ 5,2,2,1,5,1 },
+	{ 6,3,5,2,1,1,1 },
+	{ 7,2,1,2,3,4,1,3 },
+	{ 8,5,1,1,1,2,2,1,1,1,1,2 },
+	{ 9,2,3,1,2,2,1,3,1,1,2,1,1 },
+	{ 10,3,1,1,1,1,2,7,2,2,3 },
+	{ 11,2,1,1,2,1,2,1,1,5,3,2,1,1,2 },
+	{ 12,4,2,3,2,3,2,2,1,4,2,1,1 },
+	{ 13,2,2,3,1,1,3,1,1,3,5,1,4,3 },
+	{ 14,3,2,1,1,1,6,4,1,3,1,1,1,2,2,1,2 },
+	{ 15,2,1,4,1,3,3,2,2,1,1,1,1,1,2,2,1,4,1,1 },
+	{ 16,6,1,1,1,1,1,2,1,3,3,1,1,1,2,1,5,1,1,4 },
+	{ 17,2,4,1,2,1,1,2,5,1,1,1,2,2,4,2,1,4,1,2 },
+	{ 18,3,1,2,1,1,3,2,1,1,3,1,2,2,1,2,1,2,6,1,1,1,2,1 },
+	{ 19,2,1,1,1,3,4,3,6,1,4,3,1,1,4,1,2,2,4 },
 };
 
 std::ostream& operator<<( std::ostream& lhs,const Bignum& rhs )
@@ -314,6 +338,37 @@ int main()
 	{
 		auto bc = count_bits( value );
 		std::cout << value << " " << bc << " " << double( bc ) / double( digits ) << std::endl;
+	}
+
+	std::cout << Bignum{ "10000000000000000000" } << std::endl;
+
+	{
+		for( unsigned long long digits = 1ull,value = 10ull; digits < 20; digits++,value *= 10ull )
+		{
+			std::vector<int> shiftSequence;
+			for( auto n = value,count = 0ull; n > 0ull; n >>= 1ull,count++ )
+			{
+				if( (n & 0b1ull) != 0ull )
+				{
+					shiftSequence.push_back( count );
+				}
+			}
+
+			for( auto i = shiftSequence.rbegin(),e = shiftSequence.rend() - 1; i != e; i++ )
+			{
+				*i -= *std::next( i );
+			}
+
+			
+			std::cout << "{ ";
+			bool first = true;
+			for( int shift : shiftSequence )
+			{
+				std::cout << (first ? "" : ",") << shift;
+				first = false;
+			}
+			std::cout << " }," << std::endl;
+		}
 	}
 
 	FrameTimer ft;
