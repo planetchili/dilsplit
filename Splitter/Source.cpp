@@ -8,16 +8,21 @@
 class Bignum
 {
 public:
-	Bignum( unsigned long long number )
+	Bignum( unsigned long long number = 0ull )
 	{
 		bits.push_back( number );
 	}
 	Bignum( const std::string& number )
 	{
+		const auto estimated_bits = number.size() / 3u;
+		Bignum scratch;
+		scratch.bits.reserve( estimated_bits / 64 + 1 );
+		bits.reserve( estimated_bits / 64 + 1 );
+
 		for( const auto c : number )
 		{
 			assert( c >= '0' && c <= '9' );
-			Mul10();
+			Mul10( scratch );
 			*this += unsigned long long( c - '0' );
 		}
 	}
@@ -263,14 +268,15 @@ public:
 		return c;
 	}
 private:
-	void Mul10()
+	void Mul10( Bignum& scratch )
 	{
 		// calculate this number x 8
-		const auto x8 = *this << 3;
+		scratch = *this;
+		scratch <<= 3;
 		// multiply this number by 2
 		*this <<= 1;
 		// add previous this number x 8
-		*this += x8;
+		*this += scratch;
 	}
 private:
 	std::vector<unsigned long long> bits;
@@ -294,7 +300,7 @@ int count_bits( unsigned long long bits )
 	int count = 0;
 	for( ; bits != 0; bits >>= 1 )
 	{
-		if( bits & 0b1 != 0 )
+		if( (bits & 0b1) != 0 )
 		{
 			count++;
 		}
