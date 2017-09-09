@@ -14,17 +14,40 @@ public:
 	}
 	Bignum( const std::string& number )
 	{
+		// preallocate memory for parsing work
 		const size_t estimated_bits = number.size() / 3u;
 		Bignum scratch;
 		scratch.bits.reserve( estimated_bits / 64 + 1 );
 		bits.reserve( estimated_bits / 64 + 1 );
 
-		for( const auto c : number )
+		auto i = number.cbegin();
+		const auto e = number.cend();
+		// while there are 19 or more digits remaining
+		for( ; e - i >= 19; i += 19 )
 		{
-			assert( c >= '0' && c <= '9' );
-			MulPow10( 1,scratch );
-			*this += unsigned long long( c - '0' );
+			auto value = 0ull;
+			// loop through digits, convert to single ull
+			for( auto j = i,e = i + 19; j != e; j++ )
+			{
+				assert( *j >= '0' && *j <= '9' );
+				value *= 10ull;
+				value += unsigned long long( *j - '0' );
+			}
+			// push ull digits to Bignum
+			MulPow10( 19,scratch );
+			*this += value;
 		}
+		// convert remaining digits
+		auto value = 0ull;
+		for( auto j = i; j != e; j++ )
+		{
+			assert( *j >= '0' && *j <= '9' );
+			value *= 10ull;
+			value += unsigned long long( *j - '0' );
+		}
+		// push ull digits to Bignum
+		MulPow10( int( e - i ),scratch );
+		*this += value;
 	}
 	Bignum& operator<<=( int n )
 	{
@@ -350,7 +373,7 @@ int main()
 			{
 				if( (n & 0b1ull) != 0ull )
 				{
-					shiftSequence.push_back( count );
+					shiftSequence.push_back( int( count ) );
 				}
 			}
 
