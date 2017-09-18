@@ -327,6 +327,11 @@ public:
 	{
 		return bits.size() > 0u ? bits.front() : 0u;
 	}
+	void SetLow( unsigned long long lo )
+	{
+		assert( bits.size() > 0u );
+		bits.front() = lo;
+	}
 	// counts number of trailing zeros in low chunk (up to 64)
 	int CountLowZeroes() const
 	{
@@ -375,24 +380,37 @@ private:
 
 // 8-bit lookup table (fits in L1, fast to generate)
 // contains the # of steps needed to shift right by 5
+// need to take into account carry out!! and state of low 3 bits
+// add that info to the LUT
 template<int bitcount>
 class LUT
 {
 public:
+	struct Entry
+	{
+		Entry( char steps,char lostate )
+			:
+			steps( steps ),
+			lostate( lostate )
+		{}
+		unsigned char steps;
+		unsigned char lostate;
+	};
+public:
 	// generate the LUT
 	LUT()
 	{
-		counts.reserve( GetLUTSize() );
-		for( unsigned long long bits = 0u; bits < GetLUTSize(); bits++ )
+		entries.reserve( GetLUTSize() );
+		for( unsigned long long bits = 0ull; bits < GetLUTSize(); bits++ )
 		{
 			auto bits_temp = bits;
-			char count = 0;
+			unsigned char count = 0u;
 			for( int shift = 0; shift < GetShiftAmount(); count++ )
 			{
-				if( (bits_temp & 0b1u) == 0u )
+				if( (bits_temp & 0b1ull) == 0ull )
 				{
 					// shift right
-					bits_temp >>= 1;
+					bits_temp >>= 1ull;
 					shift++;
 				}
 				else
@@ -402,7 +420,7 @@ public:
 					// 0111 or
 					// 1111
 					// it is worth it to add (can stack up a row of ones or knock a row down)
-					if( (bits_temp & 0b10u) != 0u && (bits_temp & 0b1100u) != 0u )
+					if( (bits_temp & 0b10ull) != 0ull && (bits_temp & 0b1100ull) != 0ull )
 					{
 						++bits_temp;
 					}
@@ -413,13 +431,13 @@ public:
 					}
 				}
 			}
-			counts.emplace_back( count );
+			entries.emplace_back( count,unsigned char( bits_temp ) );
 		}
 	}
 	// perform lookup
-	int operator[]( unsigned long long bits ) const
+	const Entry& operator[]( unsigned long long bits ) const
 	{
-		return counts[bits & mask];
+		return entries[bits & mask];
 	}
 	static constexpr int GetSignificantBitsRequired()
 	{
@@ -431,11 +449,11 @@ public:
 	}
 	static constexpr size_t GetLUTSize()
 	{
-		return size_t( mask + 1u);
+		return size_t( mask + 1ull );
 	}
 private:
-	static constexpr unsigned long long mask = (0b1u << bitcount) - 1u;
-	std::vector<char> counts;
+	static constexpr unsigned long long mask = (0b1ull << bitcount) - 1ull;
+	std::vector<Entry> entries;
 };
 
 std::ostream& operator<<( std::ostream& lhs,const Bignum& rhs )
@@ -462,21 +480,25 @@ int main()
 	Bignum bits = digits;
 	float t1 = ft.Mark();
 
-	// generate lookup table
-	LUT<8> lut;
+	// generate lookup table (11 or 12 bits seems to be the balance for 6900 digits)
+	LUT<12> lut;
 	float tl = ft.Mark();
 
 	int count = 0;
-	// perform lookup while more than 8 significant bits
+	// perform lookup while more than N significant bits
+	for( unsigned long long lobits = bits.GetLow();
+			bits.GetChunkCount() > 1u || lobits >= lut.GetLUTSize(); lobits = bits.GetLow() )
 	{
-		for( unsigned long long lobits = bits.GetLow();
-			 bits.GetChunkCount() > 1u || lobits > 255u; lobits = bits.GetLow() )
-		{
-			count += lut[lobits];
-			bits >>= 5;
-		}
+		const auto& entry = lut[lobits];
+		count += entry.steps;
+		// perform shift
+		bits >>= lut.GetShiftAmount();
+		// fix low 3 bits
+		bits.SetLow( (bits.GetLow() & ~0b111ull) | (entry.lostate & 0b111ull) );
+		// add in 4th (carry) bit
+		bits += unsigned long long( entry.lostate & 0b1000u );
 	}
-	// handle remaining 8 bits with simple algorithm
+	// handle remaining N bits with simple algorithm
 	while( !bits.IsOne() )
 	{
 		const int trailingZeroes = bits.CountLowZeroes();
