@@ -375,18 +375,19 @@ private:
 
 // 8-bit lookup table (fits in L1, fast to generate)
 // contains the # of steps needed to shift right by 5
+template<int bitcount>
 class LUT
 {
 public:
 	// generate the LUT
 	LUT()
 	{
-		counts.reserve( 256 );
-		for( unsigned short bits = 0u; bits < 256u; bits++ )
+		counts.reserve( GetLUTSize() );
+		for( unsigned long long bits = 0u; bits < GetLUTSize(); bits++ )
 		{
 			auto bits_temp = bits;
 			char count = 0;
-			for( int shift = 0; shift < 5; count++ )
+			for( int shift = 0; shift < GetShiftAmount(); count++ )
 			{
 				if( (bits_temp & 0b1u) == 0u )
 				{
@@ -418,9 +419,22 @@ public:
 	// perform lookup
 	int operator[]( unsigned long long bits ) const
 	{
-		return counts[bits & 0b11111111];
+		return counts[bits & mask];
+	}
+	static constexpr int GetSignificantBitsRequired()
+	{
+		return bitcount;
+	}
+	static constexpr int GetShiftAmount()
+	{
+		return bitcount - 3;
+	}
+	static constexpr size_t GetLUTSize()
+	{
+		return size_t( mask + 1u);
 	}
 private:
+	static constexpr unsigned long long mask = (0b1u << bitcount) - 1u;
 	std::vector<char> counts;
 };
 
@@ -449,7 +463,7 @@ int main()
 	float t1 = ft.Mark();
 
 	// generate lookup table
-	LUT lut;
+	LUT<8> lut;
 	float tl = ft.Mark();
 
 	int count = 0;
