@@ -6,6 +6,7 @@
 #include "FrameTimer.h"
 #include <inttypes.h>
 #include <intrin.h>
+#include <fstream>
 
 class Bignum
 {
@@ -84,7 +85,7 @@ public:
 		// holds interchunk carry
 		unsigned long long carry = 0u;
 		for( auto i = bits.rbegin(),e = bits.rend();
-			 i != e; i++ )
+				i != e; i++ )
 		{
 			const unsigned long long newCarry = *i << nc;
 			if( n < 64 ) // @@@ missed this case
@@ -108,7 +109,7 @@ public:
 	{
 		return Bignum( *this ) <<= n;
 	}
-	Bignum operator>>( int n ) const
+	Bignum operator >> ( int n ) const
 	{
 		return Bignum( *this ) >>= n;
 	}
@@ -245,9 +246,10 @@ public:
 			size_t size = bits.size();
 			const size_t original_size = size;
 
+			// start at high digit
 			// first multiply usually pushes new chunk
 			{
-				// multiply
+				// multiply (h:high result l:low result)
 				unsigned long long h;
 				const unsigned long long l = _mulx_u64( bits[size - 1],rhs,&h );
 
@@ -265,7 +267,7 @@ public:
 			// start from second chunk
 			for( size_t i = original_size - 2; i < original_size; i-- )
 			{
-				// multiply
+				// multiply (h:high result l:low result)
 				unsigned long long h;
 				const unsigned long long l = _mulx_u64( bits[i],rhs,&h );
 
@@ -371,6 +373,57 @@ private:
 	};
 };
 
+// 8-bit lookup table (fits in L1, fast to generate)
+// contains the # of steps needed to shift right by 5
+class LUT
+{
+public:
+	// generate the LUT
+	LUT()
+	{
+		counts.reserve( 256 );
+		for( unsigned short bits = 0u; bits < 256u; bits++ )
+		{
+			auto bits_temp = bits;
+			char count = 0;
+			for( int shift = 0; shift < 5; count++ )
+			{
+				if( (bits_temp & 0b1u) == 0u )
+				{
+					// shift right
+					bits_temp >>= 1;
+					shift++;
+				}
+				else
+				{
+					// if 4 lsb are
+					// 1011
+					// 0111 or
+					// 1111
+					// it is worth it to add (can stack up a row of ones or knock a row down)
+					if( (bits_temp & 0b10u) != 0u && (bits_temp & 0b1100u) != 0u )
+					{
+						++bits_temp;
+					}
+					else
+					{
+						// otherwise subtracting is just as good or better
+						--bits_temp;
+					}
+				}
+			}
+			counts.emplace_back( count );
+		}
+	}
+	// perform lookup
+	int operator[]( unsigned long long bits ) const
+	{
+		return counts[bits & 0b11111111];
+	}
+private:
+	std::vector<char> counts;
+};
+
 std::ostream& operator<<( std::ostream& lhs,const Bignum& rhs )
 {
 	auto copy = rhs;
@@ -388,10 +441,28 @@ int main()
 {
 	FrameTimer ft;
 
-	const std::string digits = "125343425741238979834759095074898208959032487921897123874843128794387934298723498732489720323489723478978249372849378429372809427480924738974389789049807242437892748932784932489702437892437892437892473892789042874392487398249732879433780423879234879248739243879789203728904287493287904248973890742234789287493243879243879248739782493278439724839278349728940782094274830247389243789247389243789789240274839427389247389728493284739243879248730780924728093789024870924274839789042098173890799823740981237941234980238904890713809789712347890123897409812749801237479802873498273048970231907487129480712398471238947123084701239874219387478902478213890478970218947231890741978047890123798042429387123498142398128907892734809714809714980714978012987012987031908714908721987021390714290821498012439841239812438912348912349821493891842021438989127412897398071298071298071298071298701498071298071298071298071298071298071270312874908127489123789471293847123804721398479832179471293749812379401237890472307498012749801274123984718904980127489127908471238470812739840172149012742120934712394718207487123908123743129047123934871238094712749081274908123741239074123094817490812741025017234981273498123747812984071092378012498132980401238479801480712830470127480129874980234789013784123078479801274012741283749081237487180237432190740918742874934875908234789523789053747095";
+	std::string digits;
+	std::ifstream( "number.txt" ) >> digits;
+
+	ft.Mark();
 	Bignum bits = digits;
+	float t1 = ft.Mark();
+
+	// generate lookup table
+	LUT lut;
+	float tl = ft.Mark();
 
 	int count = 0;
+	// perform lookup while more than 8 significant bits
+	{
+		for( unsigned long long lobits = bits.GetLow();
+			 bits.GetChunkCount() > 1u || lobits > 255u; lobits = bits.GetLow() )
+		{
+			count += lut[lobits];
+			bits >>= 5;
+		}
+	}
+	// handle remaining 8 bits with simple algorithm
 	while( !bits.IsOne() )
 	{
 		const int trailingZeroes = bits.CountLowZeroes();
@@ -423,7 +494,10 @@ int main()
 		}
 	}
 
-	std::cout << count << " " << ft.Mark();
+	float t2 = ft.Mark();
+
+	std::cout << count << " " << t1 << " " << tl << " " << t2 << std::endl;
+	std::cout << "Total time: " << t1 + tl + t2;
 	std::cin.get();
 	return 0;
 }
